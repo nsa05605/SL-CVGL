@@ -63,6 +63,16 @@ def train(args, dataloader, model, optimizer, epoch):
 
         # Run network forwards
         pred_ms = model(image, calib, grid2d)
+        
+        # pred_ms는 아마 아래의 형식으로 나올 듯
+        # network.py 파일의 class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module)의 forward()
+        # return (
+        #     output_s1.squeeze(2),
+        #     output_s2.squeeze(2),
+        #     output_s4.squeeze(2),
+        #     output_s8.squeeze(2),
+        # )
+
 
         # Convert ground truths to binary mask
         gt_s1 = (cls_map > 0).float()

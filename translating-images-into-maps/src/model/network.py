@@ -963,19 +963,23 @@ class PyrOccTranDetr_S_0904_old_AxialAttention(nn.Module):
         )
 
 
+## 사용되는 모델
+# 여기에서 BEV feature 부분을 가져갈 수 있을지 판단해야 함.
+
 class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
     """
     BEV prediction with single-image inputs using the 0900 architecture.
     """
 
+    # 초기화
     def __init__(
         self,
-        num_classes=11,
-        frontend="resnet50",
-        grid_res=1.0,
+        num_classes=11,         # 클래스 수
+        frontend="resnet50",    # backbone
+        grid_res=1.0,           # 그리드 크기
         pretrained=True,
-        img_dims=[1600, 900],
-        z_range=[1.0, 6.0, 13.0, 26.0, 51.0],
+        img_dims=[1600, 900],   # 이미지 크기
+        z_range=[1.0, 6.0, 13.0, 26.0, 51.0],   # 아마 depth 범위를 말하는 것 같은데, 아래를 살펴봐야 함
         h_cropped=[60.0, 60.0, 60.0, 60.0],
         dla_norm="GroupNorm",
         additions_BEVT_linear=False,
@@ -993,7 +997,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
 
         # Cropped feature map heights
         h_cropped = torch.tensor(h_cropped)
-        # print(h_cropped) : tensor([60., 60., 60., 60.])
+        # print(h_cropped) 출력 결과 : tensor([60., 60., 60., 60.])
 
         # Image heights
         feat_h = torch.tensor([int(self.image_height / s) for s in [4, 8, 16, 32]]) # scale에 따라 image_height 조절
@@ -1006,11 +1010,13 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         self.cropped_h = cropped_h
 
         # Construct frontend network
+        # backbone 모델 불러오기
         self.frontend = resnet_fpn_backbone(
             backbone_name=frontend, pretrained=pretrained
         )
 
         # BEV transformation using Transformer
+        # 
         self.pos_enc = PositionalEncoding(256, 0.1, 1000)
         self.query_embed = nn.Embedding(100, 256)
         self.tbev8 = Transformer(
@@ -1118,6 +1124,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         self.register_buffer("h_start", h_crop_idx_start.int())
         self.register_buffer("h_end", h_crop_idx_end.int())
 
+
     def trans_reshape(self, input):
         N, C, H, W = input.shape
 
@@ -1126,6 +1133,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         x = input.permute(2, 1, 0, 3).flatten(2).permute(0, 2, 1)
         return x
 
+
     def bev_reshape(self, input, N):
         Z, NxW, C = input.shape
 
@@ -1133,12 +1141,14 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         x = input.unsqueeze(2).view(Z, N, NxW // N, C).permute(1, 3, 0, 2)
         return x
 
+
     def forward(self, image, calib, grid):
         N = image.shape[0]
         # Normalize by mean and std-dev
         image = (image - self.mean.view(3, 1, 1)) / self.std.view(3, 1, 1)
 
         # Frontend outputs
+        # Fig.1(A)의 FRONTEND 부분
         feats = self.frontend(image)
 
         # Crop feature maps to certain height
@@ -1147,7 +1157,10 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         feat32 = feats["2"][:, :, self.h_start[2] : self.h_end[2], :]
         feat64 = feats["3"][:, :, self.h_start[3] : self.h_end[3], :]
 
+
         # Apply Transformer
+        # Fig.1(A)의 TRANSFORMERS 부분
+        # tgt가 뭘 의미하는지는 모르겠음
         tgt8 = torch.zeros_like(feat8[:, 0, :1]).expand(
             -1, self.z_idx[-1] - self.z_idx[-2], -1
         )
@@ -1169,6 +1182,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         tgt32 = (tgt32.unsqueeze(-1)).permute(0, 3, 1, 2)
         tgt64 = (tgt64.unsqueeze(-1)).permute(0, 3, 1, 2)
 
+        # 여기부터 DECODER를 의미하는 듯?
         bev8 = checkpoint(
             self.tbev8,
             self.trans_reshape(feat8),
@@ -1197,6 +1211,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
             self.trans_reshape(qe64),
             self.pos_enc(self.trans_reshape(feat64)),
         )
+
 
         # Resample polar BEV to Cartesian
         bev8 = self.sample8(self.bev_reshape(bev8, N), calib, grid[:, self.z_idx[2] :])
