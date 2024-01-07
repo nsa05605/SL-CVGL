@@ -73,6 +73,10 @@ def train(args, dataloader, model, optimizer, epoch):
         #     output_s8.squeeze(2),
         # )
 
+        # 나중에 이 pred_ms 부분을 사용하면 될 것 같은데,
+        # 지금의 저 4개 나오는 형식 대신, 모델 내부에서 DLA라는 것을 적용하기 전의 bev를 사용하는 것이 맞을지도 찾아보자
+        #                           bev = torch.cat([bev64, bev32, bev16, bev8], dim=2)
+
 
         # Convert ground truths to binary mask
         gt_s1 = (cls_map > 0).float()

@@ -1160,7 +1160,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
 
         # Apply Transformer
         # Fig.1(A)의 TRANSFORMERS 부분
-        # tgt가 뭘 의미하는지는 모르겠음
+        # tgt가 뭘 의미하는지는 모르겠음(transform gt?)
         tgt8 = torch.zeros_like(feat8[:, 0, :1]).expand(
             -1, self.z_idx[-1] - self.z_idx[-2], -1
         )
@@ -1212,8 +1212,9 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
             self.pos_enc(self.trans_reshape(feat64)),
         )
 
-
         # Resample polar BEV to Cartesian
+        # BEV -> Cartesian 부분이 잘 이해되지는 않지만,
+        # Camera intrinsic parameter를 사용해서 image plane과 동일한 스케일?로 맞추는 느낌?
         bev8 = self.sample8(self.bev_reshape(bev8, N), calib, grid[:, self.z_idx[2] :])
         bev16 = self.sample16(
             self.bev_reshape(bev16, N), calib, grid[:, self.z_idx[1] : self.z_idx[2]]
