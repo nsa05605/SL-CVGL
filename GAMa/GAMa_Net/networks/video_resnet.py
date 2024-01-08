@@ -292,7 +292,7 @@ def _video_resnet(arch, pretrained=False, progress=True, **kwargs):
         model.load_state_dict(state_dict, strict=False)
     return model
 
-
+# 여기가 vresnet18 부분
 def r3d_18(pretrained=False, progress=True, **kwargs):
     """Construct 18 layer Resnet3D model as in
     https://arxiv.org/abs/1711.11248

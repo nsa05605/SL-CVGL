@@ -38,6 +38,7 @@ class ImageDataset(Dataset):
         
         self.json_files = sorted(glob.glob(os.path.join(root, self.year+"_JSON") + '/*.json'), key=lambda x:int(x.split("/")[-1].split(".json")[0]))
         if self.year == "2019":
+            # train인 경우에 self.json_files[:int(len(self.json_files)*0.8)]이 뭐를 의미하는지 확인해보기
             if mode == "train":
                 self.json_files = self.json_files[:int(len(self.json_files)*0.8)]
             elif mode == "val":
@@ -56,6 +57,7 @@ class ImageDataset(Dataset):
                 self.val_center.append([center_lat, center_lon])
                 f.close()
 
+    # 사용 x
     def get_sat_center(self, idx):
         if len(self.val_center) > 0:
             return self.val_center[idx]
@@ -63,7 +65,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, index):
         f = open(self.json_files[index])#open json
         meta_data = json.load(f)#load json
-        center_lat, center_lon = meta_data["center"]
+        center_lat, center_lon = meta_data["center"]    # json에서 latitude, longtitude 불러와서 저장
         f.close()
 
         street_images = []
@@ -74,11 +76,15 @@ class ImageDataset(Dataset):
         dir_sate_img = "/".join(dir_sate_img)
         sate_img = self.transforms_sat(Image.open(os.path.join("dataset/satellite", dir_sate_img)))
         sate_imgs.append(sate_img)
+        # 여기까지 진행하면, sate_imgs에 dataset/satellite/2019_satellite/{zoom}/{idx}.png 파일들이 담겨 있음
 
         sate_imgs = torch.stack(tuple(sate_imgs), 0)
+        # torch.stack(..., dim=0) 하면, (dims, w ,h) 형식으로 저장되는 것 같음. dims는 이미지 수?
 
         all_street_views = meta_data["street_views"]
-        if len(all_street_views.keys()) > self.seqence_size:#if one sequence >7 random drop some
+        # if one sequence >7 random drop some
+        # 여기는 아마 갖고 있는 street_views가 설정한 seq_size보다 크면 랜덤으로 dropout 한다는 것 같음
+        if len(all_street_views.keys()) > self.seqence_size: 
             if self.mode == "train":
                 for d in range(len(all_street_views.keys()) - self.seqence_size):
                     all_street_views.pop(random.choice(list(all_street_views.keys())))
@@ -89,6 +95,7 @@ class ImageDataset(Dataset):
         if len(all_street_views.keys()) < 7:
             print(self.json_files[index])
 
+        # street_views에서 하나씩
         for k in sorted(all_street_views.keys()):
             v = all_street_views[k]
             px, py = LatLngToPixel(v["lat"],v["lon"],center_lat, center_lon,20)
@@ -99,6 +106,7 @@ class ImageDataset(Dataset):
             img = self.transforms_street(Image.open(dir_img))
 
             street_images.append(img)
+            # 마찬가지로 여기도 지상 이미지들 저장해놓음
 
         #stack to torch tensors on dim=0
         street_images = torch.stack(tuple(street_images), 0)

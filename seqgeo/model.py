@@ -104,7 +104,7 @@ class StreetFeatureExtractor(nn.Module):
         super(StreetFeatureExtractor, self).__init__()
         if backbone == "res18":
             bb = models.resnet18(pretrained=True)
-            modules=list(bb.children())[:-1]
+            modules=list(bb.children())[:-1]    # bb(backbone)에서 마지막 레이어를 제외하고 불러옴
             self.dimAfterBB = 512 #feature dims after backbone
             self.featureExtractor=nn.Sequential(*modules)
         elif backbone == "vgg16":

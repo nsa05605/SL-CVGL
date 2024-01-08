@@ -78,6 +78,7 @@ def InferOnce(grdFE, satFE, transMixer, batch, device, noMask):
     numSeqInBatch = grdImgs.shape[0]
 
     #street view featuer extraction
+    # 여기 grdImgs가 차원이 어떻게 나오는지 확인해보자
     grdImgs = grdImgs.view(grdImgs.shape[0]*grdImgs.shape[1],\
         grdImgs.shape[2],grdImgs.shape[3], grdImgs.shape[4])
 
@@ -85,13 +86,14 @@ def InferOnce(grdFE, satFE, transMixer, batch, device, noMask):
     grdFeature = grdFeature.view(numSeqInBatch, SEQUENCE_SIZE, -1)
 
     #satellite view feature extraction
+    # sateImgs도 차원이 각각 뭐를 의미하는지 확인해보자
     sateImgs = sateImgs.view(sateImgs.shape[0], sateImgs.shape[1]*sateImgs.shape[2],\
         sateImgs.shape[3], sateImgs.shape[4])
     sateFeature = satFE(sateImgs)
     sateFeature = sateFeature.view(numSeqInBatch, -1)
     # print(sateFeature.shape)
    
-
+    # mask는 sequential dropout 하는 마스크 말하는 듯
     if not noMask:
         grdMixedFeature = transMixer(grdFeature, mask=True, masked_range = [0,6], max_masked=opt.max_masked)
     else:
@@ -125,7 +127,8 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()
     print(opt)
-    zoom = 20
+    zoom = 20   # satellite 기준 zoom level
+                # 수가 커질수록 가까움
 
     print(f"zoom level:{zoom}")
 
@@ -145,19 +148,19 @@ if __name__ == '__main__':
     length = 7
     print("sequence length : ", length)
     transMixer = TransMixer(transDimension=opt.feature_dims, max_length=length, numLayers = opt.MHA_layers, nHead=opt.nHeads)
-    
+    # feature_dims는 출력되는 특징 차원을 의미하는 것 같고
+    # MHA_layers는 모르겠음
 
     grdFeatureExtractor = StreetFeatureExtractor(backbone = opt.backbone)
     satelliteFeatureExtractor = SatelliteFeatureExtractor(backbone = opt.backbone, inputChannel=3)
     
-
+    # 여긴 multi-GPU인 경우
     if torch.cuda.device_count() > 1:
         transMixer = nn.DataParallel(transMixer)
         grdFeatureExtractor = nn.DataParallel(grdFeatureExtractor)
         satelliteFeatureExtractor = nn.DataParallel(satelliteFeatureExtractor)
 
     #all networks to cuda if available
-
     transMixer.to(device)
     grdFeatureExtractor.to(device)
     satelliteFeatureExtractor.to(device)
@@ -166,8 +169,9 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(itertools.chain(transMixer.parameters(),grdFeatureExtractor.parameters(), satelliteFeatureExtractor.parameters()), lr=opt.lr, betas=(opt.beta1, opt.beta2), weight_decay=1e-6)
     lrSchedule = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=LambdaLR(opt.n_epochs, opt.epoch, opt.decay_epoch).step)
 
-
     #data loader
+    # ColorJitter는 밝기, 채도 등등을 바꿔주고
+    # RandomErasing은 부분부분을 가려주는 듯
     transformsSatellite = [transforms.Resize((SATELLITE_IMG_HEIGHT, SATELLITE_IMG_WIDTH)),
                     transforms.ColorJitter(0.1, 0.1, 0.1),
                     transforms.ToTensor(),
@@ -212,7 +216,10 @@ if __name__ == '__main__':
             if batch["street"].shape[0] < 2:
                 continue
 
-            
+            ###############################################
+            # loss 부분을 수정한다면, 여기부터 수정하면 될 것 같음
+            # 일단 SeqGeM이나 SeqVLAD 가져올 때 여기로 가져오자
+
             sateFeature, grdGlobalLatent =\
             InferOnce(grdFeatureExtractor,\
             satelliteFeatureExtractor, \
@@ -223,7 +230,6 @@ if __name__ == '__main__':
             #softmargin triplet loss
             sateFeatureUnit = sateFeature / torch.linalg.norm(sateFeature,dim=1,keepdim=True)
             grdGlobalLatentUnit = grdGlobalLatent / torch.linalg.norm(grdGlobalLatent,dim=1,keepdim=True)
-
 
             lossTriplet = softMarginTripletLoss(sateFeatureUnit, grdGlobalLatentUnit, opt.gamma)
 
