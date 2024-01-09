@@ -963,72 +963,69 @@ class PyrOccTranDetr_S_0904_old_AxialAttention(nn.Module):
         )
 
 
-## 사용되는 모델
-# 여기에서 BEV feature 부분을 가져갈 수 있을지 판단해야 함.
-
+# BEV 에측을 위한 모델: 입력으로 single 이미지를 받아들임.
 class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
     """
     BEV prediction with single-image inputs using the 0900 architecture.
     """
 
-    # 초기화
     def __init__(
         self,
-        num_classes=11,         # 클래스 수
-        frontend="resnet50",    # backbone
-        grid_res=1.0,           # 그리드 크기
-        pretrained=True,
-        img_dims=[1600, 900],   # 이미지 크기
-        z_range=[1.0, 6.0, 13.0, 26.0, 51.0],   # 아마 depth 범위를 말하는 것 같은데, 아래를 살펴봐야 함
-        h_cropped=[60.0, 60.0, 60.0, 60.0],
-        dla_norm="GroupNorm",
+        num_classes=11,                         # 예측해야 할 클래스 수
+        frontend="resnet50",                    # ResNet frontend 아키텍처
+        grid_res=1.0,                           # gird 해상도
+        pretrained=True,                        # frontend ResNet의 사전 훈련된 가중치 사용 여부
+        img_dims=[1600, 900],                   # 입력 이미지 크기
+        z_range=[1.0, 6.0, 13.0, 26.0, 51.0],   # BEV 맵의 깊이 간격
+        h_cropped=[60.0, 60.0, 60.0, 60.0],     # ResNet feature map의 높이를 잘라내는 크기
+        dla_norm="GroupNorm",                   # 입력 정규화 방법
         additions_BEVT_linear=False,
         additions_BEVT_conv=False,
-        dla_l1_n_channels=32,
-        n_enc_layers=2,
-        n_dec_layers=2,
+        dla_l1_n_channels=32,                   # layer 1에서 채널 수
+        n_enc_layers=2,                         # 인코더 layer 수
+        n_dec_layers=2,                         # 디코더 layer 수
     ):
 
         super().__init__()
 
-        self.image_height = img_dims[1]
-        self.image_width = img_dims[0]
-        self.z_range = z_range
+        self.image_height = img_dims[1]         # 입력 이미지의 높이
+        self.image_width = img_dims[0]          # 입력 이미지의 너비
+        self.z_range = z_range                  # BEV 맵의 깊이 간격
 
         # Cropped feature map heights
-        h_cropped = torch.tensor(h_cropped)
-        # print(h_cropped) 출력 결과 : tensor([60., 60., 60., 60.])
+        h_cropped = torch.tensor(h_cropped)     # ResNet feature map의 높이를 잘라내는 크기
 
         # Image heights
-        feat_h = torch.tensor([int(self.image_height / s) for s in [4, 8, 16, 32]]) # scale에 따라 image_height 조절
-        crop = feat_h > h_cropped
-        h_crop_idx_start = ((feat_h - h_cropped) / 2).int().float() * crop.float()
+        # 이미지 높아룰 가번욿 헌 feature map의 높이 계산
+        # feature map의 높이를 기준으로 그롭된 높이 설정
+        feat_h = torch.tensor([int(self.image_height / s) for s in [4, 8, 16, 32]])     # feature map 높이 계산
+        crop = feat_h > h_cropped                                                       # feature map의 높이가 crop된 높이보다 크면 True
+        h_crop_idx_start = ((feat_h - h_cropped) / 2).int().float() * crop.float()      # crop된 영역의 시작 인덱스 계산 -> crop이 True인 경우에만
         h_crop_idx_end = (h_crop_idx_start + h_cropped) * crop.float() + feat_h * (
             ~crop
-        ).float()
-        cropped_h = (h_crop_idx_end - h_crop_idx_start).int()
+        ).float()                                                                       # crop된 영역의 끝 인덱스 계산 -> crop이 False면 기존의 feature map 높이 사용
+        cropped_h = (h_crop_idx_end - h_crop_idx_start).int()                           # crop된 feature map 높이 계산
         self.cropped_h = cropped_h
 
         # Construct frontend network
-        # backbone 모델 불러오기
         self.frontend = resnet_fpn_backbone(
-            backbone_name=frontend, pretrained=pretrained
+            backbone_name=frontend, pretrained=pretrained                               # front end 네트워크 구성
         )
 
         # BEV transformation using Transformer
-        # 
-        self.pos_enc = PositionalEncoding(256, 0.1, 1000)
-        self.query_embed = nn.Embedding(100, 256)
-        self.tbev8 = Transformer(
-            d_model=256,
-            nhead=4,
-            num_encoder_layers=n_enc_layers,
-            num_decoder_layers=n_dec_layers,
-            dim_feedforward=512,
+        # BEV 변환
+        self.pos_enc = PositionalEncoding(256, 0.1, 1000)       # 위치 인코딩: 입력 시퀀스의 각 위치에 대한 정보를 추가하여 transformer가 순서 정보를 학습할 수 있도록 함
+        self.query_embed = nn.Embedding(100, 256)               # transformer에 입력되는 query에 대한 임베딩
+        self.tbev8 = Transformer(                  # transformer을 사용하여 BEV 변환
+            d_model=256,                           # transformer의 입력 및 출력 차원
+            nhead=4,                               # ??
+            num_encoder_layers=n_enc_layers,       # 인코더 layer 수
+            num_decoder_layers=n_dec_layers,       # 디코더 layer 수
+            dim_feedforward=512,                   # feedfoward layer의 은닉 layer 수
             dropout=0.1,
             activation="relu",
-            normalize_before=False,
-            return_intermediate_dec=False,
+            normalize_before=False,                # layer 정규화 여부
+            return_intermediate_dec=False,         # 디코더 layer의 출력 반환 여부
         )
         self.tbev16 = Transformer(
             d_model=256,
@@ -1065,24 +1062,28 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         )
 
         # BEV Polar to Cartesian Sampler
+        # transformer의 출력을 극좌표에서 직교좌표로 변환
         self.sample8 = sample_polar2cart(z_range[4], z_range[3], grid_res)
         self.sample16 = sample_polar2cart(z_range[3], z_range[2], grid_res)
         self.sample32 = sample_polar2cart(z_range[2], z_range[1], grid_res)
         self.sample64 = sample_polar2cart(z_range[1], z_range[0], grid_res)
 
         # Batch normalisation to BEV outputs
+        # 배치 정규화
         self.bev_bn = nn.Sequential(nn.GroupNorm(16, 256), nn.ReLU(),)
 
         # Topdown DLA
+        # DLA: 출력 특성을 다운 샘플링하여 더 높은 수준의 추상을 생성(입력 특성의 해상도 감소, 채널수 증가)
         n_channels = np.array(2 ** np.arange(4) * dla_l1_n_channels, dtype=int)
         self.topdown_down_s1 = _resnet_bblock_enc_layer_old(
-            256, n_channels[0], stride=1, num_blocks=2
+            256, n_channels[0], stride=1, num_blocks=2      # input_size=256, output_size=32
         )
-        self.topdown_down_s2 = Down_old(n_channels[0], n_channels[1], num_blocks=2)
+        self.topdown_down_s2 = Down_old(n_channels[0], n_channels[1], num_blocks=2) # 0에서 n_channels[1]로 다운 샘플링
         self.topdown_down_s4 = Down_old(n_channels[1], n_channels[2], num_blocks=2)
         self.topdown_down_s8 = Down_old(n_channels[2], n_channels[3], num_blocks=2)
 
         # Aggregate Nodes
+        # 다운 샘플링을 거친 여러 스케일의 feature map을 모아 노드로 통합 ..?
         self.node_1_s1 = DLA_Node_old(n_channels[1], n_channels[0], norm=dla_norm)
         self.node_2_s2 = DLA_Node_old(n_channels[2], n_channels[1], norm=dla_norm)
         self.node_2_s1 = DLA_Node_old(n_channels[1], n_channels[0], norm=dla_norm)
@@ -1091,6 +1092,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         self.node_3_s1 = DLA_Node_old(n_channels[1], n_channels[0], norm=dla_norm)
 
         # Upsample and project
+        # 다운 샘플링된 feature map을 투영하고 업 샘플링
         self.up_node_1_s1 = IDA_up(n_channels[1], n_channels[0], kernel_size=4)
         self.up_node_2_s1 = IDA_up(n_channels[1], n_channels[0], kernel_size=4)
         self.up_node_2_s2 = IDA_up(n_channels[2], n_channels[1], kernel_size=4)
@@ -1107,12 +1109,14 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         self.id_node_3_s4 = Identity()
 
         # Detection head
+        # 각 스케일에서 detection을 수행
         self.head_s8 = nn.Conv2d(n_channels[3], num_classes, kernel_size=3, padding=1)
         self.head_s4 = nn.Conv2d(n_channels[2], num_classes, kernel_size=3, padding=1)
         self.head_s2 = nn.Conv2d(n_channels[1], num_classes, kernel_size=3, padding=1)
         self.head_s1 = nn.Conv2d(n_channels[0], num_classes, kernel_size=3, padding=1)
 
         # ImageNet normalization
+        # 평균과 표준편차를 사용하여 데이터 정규화
         self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]))
         self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]))
 
@@ -1124,7 +1128,7 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         self.register_buffer("h_start", h_crop_idx_start.int())
         self.register_buffer("h_end", h_crop_idx_end.int())
 
-
+    # input shape 변형
     def trans_reshape(self, input):
         N, C, H, W = input.shape
 
@@ -1133,34 +1137,35 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         x = input.permute(2, 1, 0, 3).flatten(2).permute(0, 2, 1)
         return x
 
-
+    # BEV shape 변형
     def bev_reshape(self, input, N):
         Z, NxW, C = input.shape
 
         # [Z, NW, C] ---> [Z, N, W, C] ---> [N, C, Z, W]
         x = input.unsqueeze(2).view(Z, N, NxW // N, C).permute(1, 3, 0, 2)
         return x
-
-
+# ----------------------------------------------------------------------------------
+    # 특징 추출
     def forward(self, image, calib, grid):
         N = image.shape[0]
         # Normalize by mean and std-dev
+        # 입력 이미지 정규화: 이미지의 모든 픽셀에 대해 평균 및 표준편차를 각각 뺴고 나눌 수 있도록 텐서 모양 조정
         image = (image - self.mean.view(3, 1, 1)) / self.std.view(3, 1, 1)
 
         # Frontend outputs
-        # Fig.1(A)의 FRONTEND 부분
+        # Frontend model에 입력
         feats = self.frontend(image)
 
         # Crop feature maps to certain height
+        # feature map을 특정 높이로 자름
         feat8 = feats["0"][:, :, self.h_start[0] : self.h_end[0], :]
         feat16 = feats["1"][:, :, self.h_start[1] : self.h_end[1], :]
         feat32 = feats["2"][:, :, self.h_start[2] : self.h_end[2], :]
         feat64 = feats["3"][:, :, self.h_start[3] : self.h_end[3], :]
 
-
         # Apply Transformer
-        # Fig.1(A)의 TRANSFORMERS 부분
-        # tgt가 뭘 의미하는지는 모르겠음(transform gt?)
+        # transformer를 feature map에 적용
+        # -> 주어진 높이의 범위에 해당하는 가상의 좌표를 생성하고, 이를 transformer에 입력
         tgt8 = torch.zeros_like(feat8[:, 0, :1]).expand(
             -1, self.z_idx[-1] - self.z_idx[-2], -1
         )
@@ -1182,7 +1187,6 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         tgt32 = (tgt32.unsqueeze(-1)).permute(0, 3, 1, 2)
         tgt64 = (tgt64.unsqueeze(-1)).permute(0, 3, 1, 2)
 
-        # 여기부터 DECODER를 의미하는 듯?
         bev8 = checkpoint(
             self.tbev8,
             self.trans_reshape(feat8),
@@ -1213,8 +1217,6 @@ class PyrOccTranDetr_S_0904_old_rep100x100_out100x100(nn.Module):
         )
 
         # Resample polar BEV to Cartesian
-        # BEV -> Cartesian 부분이 잘 이해되지는 않지만,
-        # Camera intrinsic parameter를 사용해서 image plane과 동일한 스케일?로 맞추는 느낌?
         bev8 = self.sample8(self.bev_reshape(bev8, N), calib, grid[:, self.z_idx[2] :])
         bev16 = self.sample16(
             self.bev_reshape(bev16, N), calib, grid[:, self.z_idx[1] : self.z_idx[2]]

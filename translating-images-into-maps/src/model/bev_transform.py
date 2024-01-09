@@ -6,12 +6,12 @@ from .. import utils
 
 EPSILON = 1e-6
 
-
+# Bird's Eye View Transformer
 class BEVT_04(nn.Module):
     """
     Changes from BEVT:
-        Condensed bottleneck along channel dimension,
-        Increased dropout probability,
+        Condensed bottleneck along channel dimension,  채널 차원에 따라 Condensed bottlenect 구조
+        Increased dropout probability,                 드롭 아웃 확률 증가
     """
 
     def __init__(self, in_height, z_max, z_min, cell_size):
@@ -19,23 +19,25 @@ class BEVT_04(nn.Module):
 
         # [B, C, H, W] --> [B, C_condensed, H, W]
         self.conv_c = nn.Sequential(
-            nn.Conv2d(256, 32, kernel_size=1),
-            nn.GroupNorm(2, 32),
+            nn.Conv2d(256, 32, kernel_size=1),      # input_size=256, output_size=32
+            nn.GroupNorm(2, 32),                    # 32개의 채널을 2개의 그룹으로 정규화
             nn.ReLU(),
         )
         # [B, C_condensed, W, H] --> [B, C_condensed, W, 1]
         self.linear_v = nn.Sequential(
-            nn.Linear(in_height, 1),
-            nn.GroupNorm(16, 32),
+            nn.Linear(in_height, 1),                # input_size=in_height, output_size=1
+            nn.GroupNorm(16, 32),                   # 32개의 채널을 16개의 그룹으로 정규화
             nn.ReLU(),
             nn.Dropout(p=0.5),
         )
 
         # [B, 1, C_condensed, W] --> [B, Z, C_condensed, W]
-        depth = (z_max - z_min) / cell_size
+        depth = (z_max - z_min) / cell_size         # 깊이 차원에 대한 스케일링
 
+        # input_size=1, output_size=depth
         self.z_extend = nn.Conv2d(1, int(depth), kernel_size=1)
 
+        # input_size=32, output_size=256
         self.bev_expand_c = nn.Conv2d(32, 256, kernel_size=1)
 
         self.z_max = z_max

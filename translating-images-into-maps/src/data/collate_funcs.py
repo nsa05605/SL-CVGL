@@ -124,10 +124,13 @@ def collate_nusc_s(batch):
     images, cls_maps, vis_masks, calibs, grids2d = zip(*batch)
 
     # Stack images and calibration matrices along the batch dimension
-    images = torch.stack(images)
-    cls_maps = torch.stack(cls_maps)
-    vis_masks = torch.stack(vis_masks)
-    calibs = torch.stack(calibs)
-    grids2d = torch.stack(grids2d)
+    images = torch.stack(images)                    # 이미지들을 stack 하여 하나의 텐서로 만든다.
+    cls_maps = torch.stack(cls_maps)                # 클래스 맵
+                                                    #  -> 이미지의 각 픽셀이 어떤 객체 또는 클래스에 속하는 지 표현하는 지도 ?
+    vis_masks = torch.stack(vis_masks)              # 가시 마스크
+                                                    # -> 이미지 상에서 어떤 영역이 시각적으로 관찰 가능한지 여부를 나타내는 이진 맵이나 행렬 ?
+    calibs = torch.stack(calibs)                    # calibration 행렬
+                                                    # 3D 공간의 좌표를 이미지 픽셀 좌료포 변환하는 데 사용
+    grids2d = torch.stack(grids2d)                  # 2D grid
 
     return (images, calibs, grids2d), (cls_maps, vis_masks)
